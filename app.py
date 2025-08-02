@@ -1043,8 +1043,8 @@ if not df.empty:
     if st.button("🖨️ Generate MoSPI PDF Report"):
         with st.spinner("Generating official report..."):
             try:
-                # Create PDF in memory
-                class SimpleMoSPIPDF(FPDF):
+                # 1. Create PDF class
+                class MoSPIPDF(FPDF):
                     def header(self):
                         self.set_font('Arial', 'B', 16)
                         self.cell(0, 10, 'OFFICIAL SURVEY REPORT', 0, 1, 'C')
@@ -1055,11 +1055,12 @@ if not df.empty:
                         self.set_font('Arial', 'I', 8)
                         self.cell(0, 10, f'Page {self.page_no()}/{{nb}}', 0, 0, 'C')
 
-                # Initialize PDF
-                pdf = SimpleMoSPIPDF()
+                # 2. Initialize PDF object
+                pdf = MoSPIPDF()
                 pdf.add_page()
                 
-                # 1. Report Metadata
+                # 3. Add content to PDF
+                # Report Metadata
                 pdf.set_font('Arial', 'B', 14)
                 pdf.cell(0, 10, 'Report Summary', 0, 1)
                 pdf.set_font('Arial', '', 12)
@@ -1078,7 +1079,7 @@ if not df.empty:
                 
                 pdf.ln(10)
                 
-                # 2. Data Summary
+                # Data Summary
                 pdf.set_font('Arial', 'B', 14)
                 pdf.cell(0, 10, 'Data Overview', 0, 1)
                 pdf.set_font('Arial', '', 10)
@@ -1091,12 +1092,12 @@ if not df.empty:
                 
                 for _, row in df.head().iterrows():
                     for col in cols:
-                        pdf.cell(40, 10, str(row[col])[:20], border=1)  # Truncate long text
+                        pdf.cell(40, 10, str(row[col])[:20], border=1)
                     pdf.ln()
                 
                 pdf.ln(10)
                 
-                # 3. Key Statistics
+                # Key Statistics
                 if df.select_dtypes(include='number').columns.any():
                     pdf.set_font('Arial', 'B', 14)
                     pdf.cell(0, 10, 'Numeric Statistics', 0, 1)
@@ -1112,10 +1113,14 @@ if not df.empty:
                             pdf.cell(30, 10, str(row[col]), border=1)
                         pdf.ln()
                 
-                # Generate PDF bytes
-                pdf_bytes = pdf.output(dest='S').encode('latin1')
-                
-                # Download button
+                # 4. Generate PDF bytes using tempfile (most reliable method)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                    pdf.output(tmp.name)
+                    with open(tmp.name, "rb") as f:
+                        pdf_bytes = f.read()
+                    os.unlink(tmp.name)  # Clean up temporary file
+
+                # 5. Create download button
                 filename = f"MoSPI_Report_{datetime.now().strftime('%Y%m%d')}.pdf"
                 st.success("✅ Report generated successfully!")
                 st.download_button(
@@ -1128,4 +1133,4 @@ if not df.empty:
             except Exception as e:
                 st.error(f"❌ PDF generation failed: {str(e)}")
                 import traceback
-                st.text(traceback.format_exc())  
+                st.text(traceback.format_exc())
