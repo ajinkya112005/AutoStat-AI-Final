@@ -620,68 +620,82 @@ if uploaded_file is not None or gsheet_url:
             except Exception as e:
                 st.error(f"❌ Model training failed: {str(e)}")
                 
-    # =============================================
-    # 9.5 WEIGHTED REGRESSION MODELS (NEW)
-    # =============================================
-    if not df.empty and len(df) >= 10 and weight_col:
-        st.subheader("🧮 Weighted Regression Models")
-        
-        if st.button("Train Weighted Regression"):
-            try:
-                # Prepare data
-                all_cols = list(df.columns)
-                input_features = st.multiselect("Select Input Features", 
-                                               options=all_cols, 
-                                               default=all_cols[:3], 
-                                               key='weighted_features')
-                target_col = st.selectbox("Select Target Column", 
-                                         options=[col for col in all_cols if col not in input_features and col != weight_col], 
-                                         index=0, 
-                                         key='weighted_target')
-                
-                # Filter and encode
-                model_df = df[input_features + [target_col, weight_col]].copy()
-                for col in model_df.select_dtypes(include='object').columns:
-                    model_df[col] = LabelEncoder().fit_transform(model_df[col])
-                
-                # Split data
-                X = model_df[input_features]
-                y = model_df[target_col]
-                weights = model_df[weight_col]
-                X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
-                    X, y, weights, test_size=0.2, random_state=42
-                )
-                
-                # Train weighted model
-                X_train = sm.add_constant(X_train)
-                model = sm.WLS(y_train, X_train, weights=w_train).fit()
-                
-                # Show results
-                st.subheader("Weighted Least Squares Results")
-                st.text(model.summary())
-                
-                # Calculate performance metrics
-                X_test = sm.add_constant(X_test)
-                preds = model.predict(X_test)
-                rmse = np.sqrt(mean_squared_error(y_test, preds))
-                r2 = r2_score(y_test, preds)
-                
-                col1, col2 = st.columns(2)
-                col1.metric("RMSE", f"{rmse:.4f}")
-                col2.metric("R-squared", f"{r2:.4f}")
-                
-                # Feature importance
-                st.subheader("Feature Importance (Weighted)")
-                importance = pd.DataFrame({
-                    'Feature': input_features,
-                    'Coefficient': model.params[1:].values,
-                    'P-value': model.pvalues[1:].values
-                }).sort_values('Coefficient', key=abs, ascending=False)
-                
-                st.dataframe(importance.style.bar(subset=['Coefficient'], align='mid', color=['#d65f5f', '#5fba7d']))
-                
-            except Exception as e:
-                st.error(f"❌ Weighted regression failed: {str(e)}")
+   # =============================================
+# 9.5 WEIGHTED REGRESSION MODELS - FIXED VERSION
+# =============================================
+if not df.empty and len(df) >= 10 and weight_col:
+    st.subheader("🧮 Weighted Regression Models")
+    
+    if st.button("Train Weighted Regression"):
+        try:
+            # Prepare data - ensure we exclude None/NA values
+            all_cols = [col for col in df.columns if col in df.columns]  # Ensure valid columns
+            input_features = st.multiselect(
+                "Select Input Features", 
+                options=all_cols, 
+                default=all_cols[:3] if len(all_cols) >= 3 else all_cols,
+                key='weighted_features'
+            )
+            target_col = st.selectbox(
+                "Select Target Column", 
+                options=[col for col in all_cols if col not in input_features and col != weight_col],
+                index=0,
+                key='weighted_target'
+            )
+            
+            # Filter and clean data
+            model_df = df[input_features + [target_col, weight_col]].copy().dropna()
+            
+            # Encode categorical features
+            for col in model_df.select_dtypes(include=['object', 'category']).columns:
+                model_df[col] = LabelEncoder().fit_transform(model_df[col].astype(str))
+            
+            # Split data
+            X = model_df[input_features]
+            y = model_df[target_col]
+            weights = model_df[weight_col]
+            
+            # Ensure weights are numeric
+            weights = pd.to_numeric(weights, errors='coerce')
+            valid_idx = weights.notna()
+            X = X[valid_idx]
+            y = y[valid_idx]
+            weights = weights[valid_idx]
+            
+            X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
+                X, y, weights, test_size=0.2, random_state=42
+            )
+            
+            # Train weighted model
+            X_train = sm.add_constant(X_train)
+            model = sm.WLS(y_train, X_train, weights=w_train).fit()
+            
+            # Show results
+            st.subheader("Weighted Least Squares Results")
+            st.text(model.summary())
+            
+            # Calculate performance metrics
+            X_test = sm.add_constant(X_test)
+            preds = model.predict(X_test)
+            rmse = np.sqrt(mean_squared_error(y_test, preds))
+            r2 = r2_score(y_test, preds)
+            
+            col1, col2 = st.columns(2)
+            col1.metric("RMSE", f"{rmse:.4f}")
+            col2.metric("R-squared", f"{r2:.4f}")
+            
+            # Feature importance
+            st.subheader("Feature Importance (Weighted)")
+            importance = pd.DataFrame({
+                'Feature': input_features,
+                'Coefficient': model.params[1:].values,
+                'P-value': model.pvalues[1:].values
+            }).sort_values('Coefficient', key=abs, ascending=False)
+            
+            st.dataframe(importance.style.bar(subset=['Coefficient'], align='mid', color=['#d65f5f', '#5fba7d']))
+            
+        except Exception as e:
+            st.error(f"❌ Weighted regression failed: {str(e)}")
 
     # =============================================
     # 10. PREDICTION & FORECAST (SAFER VERSION)
@@ -727,52 +741,118 @@ if uploaded_file is not None or gsheet_url:
         except Exception as e:
             st.error(f"❌ Prediction failed: {str(e)}")
             
-    # =============================================
-    # 10.5 WEIGHT CALIBRATION (RAKING) (NEW)
-    # =============================================
-    if not df.empty and weight_col:
-        st.subheader("🔧 Weight Calibration (Raking)")
+# =============================================
+# 10.5 WEIGHT CALIBRATION (RAKING) - FIXED VERSION
+# =============================================
+if not df.empty and weight_col:
+    st.subheader("🔧 Weight Calibration (Raking)")
+    
+    categorical_cols = df.select_dtypes(include='object').columns.tolist()
+    if len(categorical_cols) > 0:
+        # Select variables for raking
+        rake_vars = st.multiselect(
+            "Select variables for calibration", 
+            options=categorical_cols, 
+            help="Select categorical variables to calibrate weights to population margins"
+        )
         
-        categorical_cols = df.select_dtypes(include='object').columns.tolist()
-        if len(categorical_cols) > 0:
-            # Select variables for raking
-            rake_vars = st.multiselect("Select variables for calibration", 
-                                       options=categorical_cols, 
-                                       help="Select categorical variables to calibrate weights to population margins")
+        # Get population proportions (user input)
+        st.subheader("Population Proportions")
+        pop_margins = {}
+        
+        for var in rake_vars:
+            st.markdown(f"**{var} distribution**")
+            unique_vals = df[var].unique()
+            cols = st.columns(len(unique_vals))
             
-            if st.button("Calibrate Weights") and rake_vars:
-                try:
-                    # Create design matrix
-                    formula = " ~ " + " + ".join([f"C({v})" for v in rake_vars])
-                    design = sm.add_constant(pd.get_dummies(df[rake_vars], drop_first=True))
-                    
-                    # Create initial weights (uniform)
-                    initial_weights = np.ones(len(df))
-                    
-                    # Population totals (assume equal proportions for demo)
-                    # In real usage, you would input known population margins
-                    pop_totals = np.ones(design.shape[1])
-                    pop_totals[0] = len(df)  # Intercept total
-                    
-                    # Calibrate weights
-                    calibrated = sm.CalibratedModel(
-                        design, 
-                        initial_weights, 
-                        population_totals=pop_totals
-                    ).fit()
-                    
-                    # Add calibrated weights to dataframe
-                    df["calibrated_weight"] = calibrated.weights
-                    weight_col = "calibrated_weight"
-                    
-                    st.success("✅ Weights calibrated successfully!")
-                    st.metric("Weight Adjustment Factor", 
-                             f"{df['calibrated_weight'].mean():.2f} ± {df['calibrated_weight'].std():.2f}")
-                    
-                except Exception as e:
-                    st.error(f"❌ Calibration failed: {str(e)}")
-        else:
-            st.info("ℹ️ No categorical variables available for calibration")
+            var_margins = {}
+            for i, val in enumerate(unique_vals):
+                with cols[i]:
+                    prop = st.number_input(
+                        f"{val} proportion",
+                        min_value=0.0,
+                        max_value=1.0,
+                        value=round(1/len(unique_vals), 3),
+                        key=f"pop_{var}_{val}"
+                    )
+                    var_margins[val] = prop
+            
+            # Normalize proportions to sum to 1
+            total = sum(var_margins.values())
+            pop_margins[var] = {k: v/total for k, v in var_margins.items()}
+        
+        if st.button("Calibrate Weights") and rake_vars:
+            try:
+                # Create initial weights
+                initial_weights = df[weight_col].values
+                
+                # Create design matrix for raking
+                design = pd.DataFrame()
+                for var in rake_vars:
+                    dummies = pd.get_dummies(df[var], prefix=var)
+                    design = pd.concat([design, dummies], axis=1)
+                
+                # Convert population margins to targets
+                targets = {}
+                for var in rake_vars:
+                    for val, prop in pop_margins[var].items():
+                        targets[f"{var}_{val}"] = prop * len(df)
+                
+                # Perform raking using iterative proportional fitting
+                calibrated_weights = initial_weights.copy()
+                
+                # Simple implementation of raking (IPF)
+                max_iter = 10
+                tolerance = 1e-6
+                
+                for _ in range(max_iter):
+                    for var in rake_vars:
+                        # Get current weighted totals
+                        weighted_totals = df.groupby(var).apply(
+                            lambda x: np.sum(calibrated_weights[x.index])
+                        )
+                        
+                        # Calculate adjustment factors
+                        for val in weighted_totals.index:
+                            col_name = f"{var}_{val}"
+                            if col_name in targets:
+                                idx = df[var] == val
+                                adjustment = targets[col_name] / weighted_totals[val]
+                                calibrated_weights[idx] *= adjustment
+                
+                # Normalize weights to maintain original sum
+                calibrated_weights *= initial_weights.sum() / calibrated_weights.sum()
+                
+                # Add calibrated weights to dataframe
+                df["calibrated_weight"] = calibrated_weights
+                weight_col = "calibrated_weight"
+                
+                st.success("✅ Weights calibrated successfully!")
+                
+                # Show before/after comparison
+                st.subheader("Weight Comparison")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Original Weight Mean", f"{initial_weights.mean():.2f}")
+                    st.metric("Original Weight Std Dev", f"{initial_weights.std():.2f}")
+                
+                with col2:
+                    st.metric("Calibrated Weight Mean", f"{calibrated_weights.mean():.2f}")
+                    st.metric("Calibrated Weight Std Dev", f"{calibrated_weights.std():.2f}")
+                
+                # Show distribution comparison
+                fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+                sns.histplot(initial_weights, ax=ax[0], kde=True, color='blue')
+                ax[0].set_title("Original Weights")
+                sns.histplot(calibrated_weights, ax=ax[1], kde=True, color='green')
+                ax[1].set_title("Calibrated Weights")
+                st.pyplot(fig)
+                
+            except Exception as e:
+                st.error(f"❌ Calibration failed: {str(e)}")
+    else:
+        st.info("ℹ️ No categorical variables available for calibration")
 
 # =============================================
 # 11. CHATBOT (SECURE VERSION)
